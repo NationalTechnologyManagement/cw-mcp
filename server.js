@@ -14,7 +14,7 @@ const CW_COMPANY_ID = process.env.CW_COMPANY_ID || "ntm";
 const CW_PUBLIC_KEY = process.env.CW_PUBLIC_KEY;
 const CW_PRIVATE_KEY= process.env.CW_PRIVATE_KEY;
 const CW_CLIENT_ID  = process.env.CW_CLIENT_ID;
-const API_VERSION   = "2025.16";
+const API_VERSION   = "v4_6_release";
 
 if (!CW_PUBLIC_KEY || !CW_PRIVATE_KEY || !CW_CLIENT_ID) {
   console.error("Missing required env vars: CW_PUBLIC_KEY, CW_PRIVATE_KEY, CW_CLIENT_ID");
@@ -28,13 +28,13 @@ function getAuthHeaders() {
     Authorization: `Basic ${token}`,
     "Content-Type": "application/json",
     clientId: CW_CLIENT_ID,
-    Accept: `application/vnd.connectwise.com+json; version=${API_VERSION}`,
+    Accept: "application/json",
   };
 }
 
 // ─── CW API Helper ────────────────────────────────────────────────────────────
 async function cwRequest(method, path, params = {}, data = null) {
-  const url = `${CW_BASE_URL}/${API_VERSION}/apis/3.0${path}`;
+  const url = `${CW_BASE_URL}/${API_VERSION}/apis/3.0${path}`; // e.g. https://na.myconnectwise.net/v4_6_release/apis/3.0/...
   try {
     const res = await axios({
       method,
