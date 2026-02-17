@@ -159,16 +159,14 @@ function createMcpServer() {
     "add_ticket_note",
     "Add a note to a ConnectWise service ticket",
     {
-      ticketId:          z.number().describe("The ticket ID"),
-      text:              z.string().describe("Note text content"),
-      internalFlag:      z.boolean().optional().describe("True = internal note, False = external/customer visible"),
-      detailDescription: z.boolean().optional().describe("Add as detail description"),
+      ticketId:     z.number().describe("The ticket ID"),
+      text:         z.string().describe("Note text content"),
+      internalFlag: z.boolean().optional().describe("True = internal note, False = external/customer visible"),
     },
-    async ({ ticketId, text, internalFlag, detailDescription }) => {
+    async ({ ticketId, text, internalFlag }) => {
       const body = {
         text,
-        internalFlag:      internalFlag ?? true,
-        detailDescription: detailDescription ?? false,
+        internalFlag: internalFlag ?? true,
       };
       const data = await cwRequest("POST", `/service/tickets/${ticketId}/notes`, {}, body);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
