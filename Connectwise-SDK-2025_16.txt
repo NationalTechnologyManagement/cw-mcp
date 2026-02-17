@@ -1,0 +1,688 @@
+Manage API changes made to 2025.16 compared to 2025.8
+
+========== Route Changes ==========
+
+/company/companies/{parentId}/serviceTemplates
+	 AddedRoute
+	 AddedMethod Get
+	 AddedMethod Post
+/company/companies/{parentId}/serviceTemplates/{id}
+	 AddedRoute
+	 AddedMethod Get
+	 AddedMethod Put
+	 AddedMethod Patch
+	 AddedMethod Delete
+/company/companies/{parentId}/serviceTemplates/{id}/copy
+	 AddedRoute
+	 AddedMethod Post
+/company/companies/{parentId}/serviceTemplates/{id}/generate
+	 AddedRoute
+	 AddedMethod Post
+/company/companies/{parentId}/serviceTemplates/{id}/link
+	 AddedRoute
+	 AddedMethod Post
+/company/companies/{parentId}/serviceTemplates/{id}/unlink
+	 AddedRoute
+	 AddedMethod Post
+/company/companies/{parentId}/serviceTemplates/count
+	 AddedRoute
+	 AddedMethod Get
+/project/projects/{id}/projectRecap
+	 AddedRoute
+	 AddedMethod Get
+/sales/orders/{id}/convertToAgreement
+	 AddedRoute
+	 AddedMethod Post
+/service/locations/{id}/usages
+	 AddedRoute
+	 AddedMethod Get
+/service/locations/{id}/usages/list
+	 AddedRoute
+	 AddedMethod Get
+/service/templates
+	 AddedMethod Post
+/service/templates/{id}
+	 AddedMethod Put
+	 AddedMethod Patch
+	 AddedMethod Delete
+/system/customFieldInfos
+	 AddedRoute
+	 AddedMethod Get
+/system/todayPagelinks
+	 AddedRoute
+	 AddedMethod Get
+/system/todayPagelinks/
+	 AddedRoute
+	 AddedMethod Post
+/system/todayPagelinks/{id}
+	 AddedRoute
+	 AddedMethod Get
+	 AddedMethod Delete
+	 AddedMethod Put
+	 AddedMethod Patch
+/system/todayPagelinks/count
+	 AddedRoute
+	 AddedMethod Get
+/time/entries/{id}/cancelReject
+	 AddedRoute
+	 AddedMethod Post
+/time/entries/{id}/reject
+	 AddedRoute
+	 AddedMethod Post
+
+========== Model Changes ==========
+
+AddressFormat
+	connectWiseId string Added
+CommunicationType
+	connectWiseId string Added
+Company
+	emailTemplate object Added
+ManagementReportNotification
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+CompanyServiceTemplate
+	parentTemplate object Added
+	id integer Added
+	name string Added
+	board object Added
+	type object Added
+	item object Added
+	subtype object Added
+	serviceLocation object Added
+	status object Added
+	source object Added
+	priority object Added
+	team object Added
+	company object Added
+	contact object Added
+	site object Added
+	assignedNotifyFlag boolean Added
+	location object Added
+	department object Added
+	summary string Added
+	problem string Added
+	hoursBudget number Added
+	hourlyRate number Added
+	internalAnalysis string Added
+	resolution string Added
+	timeBillableFlag boolean Added
+	expenseBillableFlag boolean Added
+	productBillableFlag boolean Added
+	purchaseOrderNumber string Added
+	reference string Added
+	estimatedExpenseCost number Added
+	estimatedExpenseRevenue number Added
+	estimatedProductCost number Added
+	estimatedProductRevenue number Added
+	estimatedTimeCost number Added
+	estimatedTimeRevenue number Added
+	billComplete_Flag boolean Added
+	billServiceSeparatelyFlag boolean Added
+	billingAmount number Added
+	billUnapprovedTimeAndExpensesFlag boolean Added
+	overrideFlag boolean Added
+	timeInvoiceFlag boolean Added
+	expenseInvoiceFlag boolean Added
+	productInvoiceFlag boolean Added
+	agreement object Added
+	workRole object Added
+	workType object Added
+	billTime string Added
+	billExpenses string Added
+	billProducts string Added
+	billingMethod string Added
+	severity string Added
+	impact string Added
+	assignedBy object Added
+	scheduleDaysBefore integer Added
+	serviceDaysBefore integer Added
+	attachScheduleToNewServiceFlag boolean Added
+	templateFlag boolean Added
+	emailContactFlag boolean Added
+	emailResourceFlag boolean Added
+	emailCCFlag boolean Added
+	emailCC string Added
+	restrictDownpaymentFlag boolean Added
+	_info object Added
+ServiceTemplate
+	hourlyRate number Added
+	resolution string Added
+	productBillableFlag boolean Added
+	estimatedExpenseCost number Added
+	estimatedExpenseRevenue number Added
+	estimatedProductCost number Added
+	estimatedProductRevenue number Added
+	estimatedTimeCost number Added
+	estimatedTimeRevenue number Added
+	workRole object Added
+	workType object Added
+	billTime string Added
+	billExpenses string Added
+	billProducts string Added
+TemplateGenerate
+	generateAllRecordsFlag boolean Added
+CompanySite
+	territory object Added
+	invoiceTemplate object Added
+ConfigurationTypeQuestionValue
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+ConfigurationTypeQuestion
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+ContactRelationship
+	connectWiseId string Added
+ManagedDevicesIntegration
+	connectWiseId string Added
+ManagedDevicesIntegrationCrossReference
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+ManagedDevicesIntegrationLogin
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+ManagedDevicesIntegrationNotification
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+	notifyCwId string Added
+Management
+	connectWiseId string Added
+ManagementBackup
+	connectWiseId string Added
+ManagementItSolution
+	connectWiseId string Added
+ManagementItSolutionAgreementInterfaceParameter
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+	agrTypeCwId string Added
+	serverProductCwId string Added
+	workstationProductCwId string Added
+	spamStatsProductCwId string Added
+PortalConfiguration
+	connectWiseId string Added
+PortalConfigurationInvoiceSetup
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+PortalConfigurationOpportunitySetup
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+PortalConfigurationPasswordEmailSetup
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+PortalConfigurationProjectSetup
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+PortalConfigurationServiceSetup
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+State
+	connectWiseId string Added
+TrackAction
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+	trackActionActivityTypeCwId string Added
+	trackActionActivityStatusCwId string Added
+	trackActioncompanyStatusCwId string Added
+	trackActionGroupCwId string Added
+PaymentType
+	connectWiseId string Added
+AccountingPackageSetup
+	connectWiseId string Added
+AgreementTypeBoardDefault
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+AgreementTypeWorkRole
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+AgreementTypeWorkType
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+AgreementBatchSetup
+	connectWiseId string Added
+BillingCycle
+	connectWiseId string Added
+BillingStatus
+	connectWiseId string Added
+BillingTerm
+	connectWiseId string Added
+Finance.Currency
+	connectWiseId string Added
+DeliveryMethod
+	connectWiseId string Added
+GLAccount
+	connectWiseId string Added
+GLPath
+	connectWiseId string Added
+TaxCode
+	connectWiseId string Added
+TaxCodeXRef
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+CampaignStatus
+	connectWiseId string Added
+CampaignType
+	connectWiseId string Added
+Type.SubType.CampaignSubType
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+Group
+	connectWiseId string Added
+ProcurementAdjustment
+	customFields array Added
+AdjustmentType
+	connectWiseId string Added
+Category
+	connectWiseId string Added
+Manufacturer
+	connectWiseId string Added
+PricingSchedule
+	connectWiseId string Added
+PricingDetail
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+PurchaseOrderStatus
+	connectWiseId string Added
+PurchaseOrderStatusEmailTemplate
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+PurchaseOrderStatusNotification
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+RmaAction
+	connectWiseId string Added
+RmaDisposition
+	connectWiseId string Added
+RmaStatus
+	connectWiseId string Added
+RmaStatusEmailTemplate
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+RmaStatusNotification
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+ShipmentMethod
+	connectWiseId string Added
+SubCategory
+	connectWiseId string Added
+ProductType
+	connectWiseId string Added
+UnitOfMeasure
+	connectWiseId string Added
+Conversion
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+WarehouseBin
+	connectWiseId string Added
+Warehouse
+	connectWiseId string Added
+PhaseStatus
+	connectWiseId string Added
+ProjectRecap
+	treeID string Added
+	iD integer Added
+	recID integer Added
+	displayID string Added
+	description string Added
+	companyName string Added
+	status string Added
+	isProject boolean Added
+	isPhase boolean Added
+	isTicket boolean Added
+	isIssue boolean Added
+	addOnFlag boolean Added
+	parentPhaseRecID integer Added
+	wbsCode string Added
+	billingMethodID string Added
+	billingMethod string Added
+	billingAmount string Added
+	overrideFlag boolean Added
+	billingStartDate string Added
+	revenueEstimate number Added
+	revenueActual number Added
+	revenueBilled number Added
+	revenueUnbilled number Added
+	costEstimate number Added
+	costActual number Added
+	grossMarginEstimate number Added
+	grossMarginBilled number Added
+	recType string Added
+	productsBilled number Added
+	expensesBilled number Added
+	bundleBilled number Added
+ProjectType
+	connectWiseId string Added
+ProjectSecurityRole
+	connectWiseId string Added
+ProjectSecurityRoleSetting
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+Commission
+	connectWiseId string Added
+OpportunityRating
+	connectWiseId string Added
+OpportunityStatus
+	connectWiseId string Added
+OpportunityType
+	connectWiseId string Added
+OrderToAgreementConversion
+	agreementId integer Added
+	name string Added
+	type object Added
+	startDate string Added
+	endDate string Added
+	noEndingDateFlag boolean Added
+	billCycleId integer Added
+	billOneTimeFlag boolean Added
+	locationId integer Added
+	businessUnitId integer Added
+	copyOverNotes boolean Added
+	includeAllDocumentsFlag boolean Added
+	includeAllProductsFlag boolean Added
+	includeDocumentIds array Added
+	includeProductIds array Added
+	appLimitType integer Added
+	appLimitAmount number Added
+ConvertOrderToServiceTicket
+	serviceTicketRecId integer Added
+	copyOverAllDocuments boolean Added
+	documentRecIds array Added
+	copyOverAllProducts boolean Added
+	productRecIds array Added
+	copyOverNotes boolean Added
+OrderStatus
+	connectWiseId string Added
+OrderStatusEmailTemplate
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+OrderStatusNotification
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+	orderStatusNotifyWhoCwId string Added
+SalesProbability
+	connectWiseId string Added
+SalesQuota
+	connectWiseId string Added
+Role
+	connectWiseId string Added
+SalesTeam
+	connectWiseId string Added
+SalesTeamMember
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+OpportunityStage
+	connectWiseId string Added
+Calendar
+	connectWiseId string Added
+ScheduleColor
+	connectWiseId string Added
+ScheduleEntry
+	ticketType string Added
+HolidayList
+	connectWiseId string Added
+Holiday
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+ScheduleReminderTime
+	connectWiseId string Added
+ScheduleStatus
+	connectWiseId string Added
+ScheduleType
+	connectWiseId string Added
+BoardStatusNotification
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+BoardNotification
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+KnowledgeBaseCategory
+	connectWiseId string Added
+KnowledgeBaseSettings
+	connectWiseId string Added
+KnowledgeBaseSubCategory
+	connectWiseId string Added
+ServiceLocation
+	connectWiseId string Added
+Priority
+	connectWiseId string Added
+ServiceSignoff
+	connectWiseId string Added
+Severity
+	connectWiseId string Added
+SLA
+	connectWiseId string Added
+SLAPriority
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+	serviceSlaPriorityCwId string Added
+Source
+	connectWiseId string Added
+SurveyOption
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+ServiceSurveyQuestion
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+ServiceTicketLink
+	connectWiseId string Added
+ServiceTicketLinkInfo
+	enabledFlag boolean Added
+Ticket
+	respondByGoalUTC string Added
+	resplanGoalUTC string Added
+	resolutionGoalUTC string Added
+	escalationLastUpdateMinutes integer Added
+AllowedFileType
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+AutoSyncTime
+	connectWiseId string Added
+Certification
+	connectWiseId string Added
+ConnectWiseHostedSetup
+	connectWiseId string Added
+CustomFieldInfo
+	caption string Added
+	connectWiseID string Added
+	entryMethod string Added
+	id integer Added
+	numberOfDecimals integer Added
+	podId string Added
+	rowNum integer Added
+	type string Added
+	userDefinedFieldRecId integer Added
+	value object Added
+	screenId string Added
+	displayOnScreenFlag boolean Added
+	_info object Added
+CustomReport
+	connectWiseId string Added
+EmailExclusion
+	connectWiseId string Added
+FileUploadSetting
+	connectWiseId string Added
+InOutType
+	connectWiseId string Added
+IntegratorLogin
+	connectWiseId string Added
+KPICategory
+	connectWiseId string Added
+KPI
+	connectWiseId string Added
+Link
+	connectWiseId string Added
+ManagementNetworkSecurity
+	connectWiseId string Added
+MemberType
+	connectWiseId string Added
+NotificationRecipient
+	connectWiseId string Added
+PortalReport
+	connectWiseId string Added
+	portalConfigurationCwId string Added
+QuoteLink
+	connectWiseId string Added
+ReportCard
+	connectWiseId string Added
+ReportCardDetail
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+	kpiCwId string Added
+SkillCategory
+	connectWiseId string Added
+Skill
+	connectWiseId string Added
+StandardNote
+	connectWiseId string Added
+Survey
+	connectWiseId string Added
+SurveyQuestionValue
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+SurveyQuestion
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+TimeZoneSetup
+	connectWiseId string Added
+TodayPageCategory
+	connectWiseId string Added
+TodayPageLink
+	id integer Added
+	description string Added
+	link string Added
+	openInNewWindow boolean Added
+	sortOrder integer Added
+	category integer Added
+	location object Added
+	_info object Added
+	connectWiseId string Added
+TimeAccrual
+	connectWiseId string Added
+TimeAccrualDetail
+	connectWiseId string Added
+	parentConnectWiseId string Added
+	parentId integer Added
+	grandParentId integer Added
+	grandParentConnectWiseId string Added
+ChargeCode
+	connectWiseId string Added
+TimeEntryTierUpdate
+	id integer Added
+	approvalType string Added
+TimeEntryTierReject
+	comment string Added
+	id integer Added
+	approvalType string Added
+TimePeriodSetup
+	connectWiseId string Added
+WorkRole
+	connectWiseId string Added
+WorkType
+	connectWiseId string Added
+==============================
+Done
