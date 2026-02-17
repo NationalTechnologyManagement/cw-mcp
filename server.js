@@ -166,7 +166,9 @@ function createMcpServer() {
     async ({ ticketId, text, internalFlag }) => {
       const body = {
         text,
-        internalFlag: internalFlag ?? true,
+        detailDescriptionFlag: false,
+        internalAnalysisFlag: internalFlag ?? true,
+        resolutionFlag: false,
       };
       const data = await cwRequest("POST", `/service/tickets/${ticketId}/notes`, {}, body);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
