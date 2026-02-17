@@ -162,13 +162,15 @@ function createMcpServer() {
       ticketId:     z.number().describe("The ticket ID"),
       text:         z.string().describe("Note text content"),
       internalFlag: z.boolean().optional().describe("True = internal note, False = external/customer visible"),
+      noteType:     z.enum(["discussion", "internal", "detail", "resolution"]).optional().describe("Tab to post to: discussion (default), internal (Internal Analysis), detail (Detail Description), resolution (Resolution)"),
     },
-    async ({ ticketId, text, internalFlag }) => {
+    async ({ ticketId, text, internalFlag, noteType }) => {
+      const type = noteType ?? (internalFlag === true ? "internal" : "discussion");
       const body = {
         text,
-        detailDescriptionFlag: false,
-        internalAnalysisFlag: internalFlag ?? true,
-        resolutionFlag: false,
+        detailDescriptionFlag: type === "detail",
+        internalAnalysisFlag:  type === "internal",
+        resolutionFlag:        type === "resolution",
       };
       const data = await cwRequest("POST", `/service/tickets/${ticketId}/notes`, {}, body);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
