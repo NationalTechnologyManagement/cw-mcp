@@ -168,9 +168,10 @@ function createMcpServer() {
       const type = noteType ?? (internalFlag === true ? "internal" : "discussion");
       const body = {
         text,
-        ...(type === "detail"     && { detailDescriptionFlag: true }),
-        ...(type === "internal"   && { internalAnalysisFlag: true }),
-        ...(type === "resolution" && { resolutionFlag: true }),
+        ...(type === "detail"      && { detailDescriptionFlag: true }),
+        ...(type === "internal"    && { internalAnalysisFlag: true }),
+        ...(type === "resolution"  && { resolutionFlag: true }),
+        ...(type === "discussion"  && { detailDescriptionFlag: true }),
       };
       const data = await cwRequest("POST", `/service/tickets/${ticketId}/notes`, {}, body);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
