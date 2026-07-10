@@ -236,6 +236,49 @@ function createMcpServer() {
   );
 
   server.tool(
+    "update_service_template",
+    "Edit an existing ConnectWise service ticket template — e.g. change its Type/SubType/Item, default status, summary, or name. Only the fields you pass are changed.",
+    {
+      templateId:   z.number().describe("The service template ID to update (e.g. 220)"),
+      name:         z.string().optional().describe("New template name"),
+      summary:      z.string().optional().describe("New default summary"),
+      statusId:     z.number().optional().describe("New default status ID"),
+      typeId:       z.number().optional().describe("New ticket type ID (e.g. 283 = Billable Work)"),
+      subTypeId:    z.number().optional().describe("New ticket subtype ID (e.g. 249 = New User Setup)"),
+      itemId:       z.number().optional().describe("New ticket item ID (e.g. 15 = New User)"),
+      priorityId:   z.number().optional().describe("New priority ID"),
+      problem:      z.string().optional().describe("New initial/problem description"),
+      boardId:      z.number().optional().describe("Move the template to a different board (may be restricted by CW)"),
+      templateFlag: z.boolean().optional().describe("Toggle the reusable-template flag"),
+    },
+    async ({ templateId, name, summary, statusId, typeId, subTypeId, itemId, priorityId, problem, boardId, templateFlag }) => {
+      const ops = [];
+      if (name !== undefined)         ops.push({ op: "replace", path: "/name",         value: name });
+      if (summary !== undefined)      ops.push({ op: "replace", path: "/summary",      value: summary });
+      if (statusId !== undefined)     ops.push({ op: "replace", path: "/status/id",    value: statusId });
+      if (typeId !== undefined)       ops.push({ op: "replace", path: "/type/id",      value: typeId });
+      if (subTypeId !== undefined)    ops.push({ op: "replace", path: "/subtype/id",   value: subTypeId });
+      if (itemId !== undefined)       ops.push({ op: "replace", path: "/item/id",      value: itemId });
+      if (priorityId !== undefined)   ops.push({ op: "replace", path: "/priority/id",  value: priorityId });
+      if (problem !== undefined)      ops.push({ op: "replace", path: "/problem",      value: problem });
+      if (boardId !== undefined)      ops.push({ op: "replace", path: "/board/id",     value: boardId });
+      if (templateFlag !== undefined) ops.push({ op: "replace", path: "/templateFlag", value: templateFlag });
+      const data = await cwRequest("PATCH", `/service/templates/${templateId}`, {}, ops);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "delete_service_template",
+    "Delete a ConnectWise service ticket template by ID (removes the template and its task templates). Destructive and not reversible.",
+    { templateId: z.number().describe("The service template ID to delete") },
+    async ({ templateId }) => {
+      const data = await cwRequest("DELETE", `/service/templates/${templateId}`);
+      return { content: [{ type: "text", text: JSON.stringify(data || { deleted: true, templateId }, null, 2) }] };
+    }
+  );
+
+  server.tool(
     "get_service_template_tasks",
     "Get the task templates (checklist items) belonging to a ConnectWise service ticket template",
     {
@@ -271,6 +314,39 @@ function createMcpServer() {
       };
       const data = await cwRequest("POST", `/service/templates/${templateId}/tasks`, {}, body);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "update_service_template_task",
+    "Edit an existing task template (checklist item) on a service ticket template. Only the fields you pass are changed.",
+    {
+      templateId: z.number().describe("The parent service template ID"),
+      taskId:     z.number().describe("The task template ID to update"),
+      priority:   z.number().optional().describe("New order/sequence number"),
+      notes:      z.string().optional().describe("New task text/description"),
+      codeId:     z.number().optional().describe("New service code ID"),
+    },
+    async ({ templateId, taskId, priority, notes, codeId }) => {
+      const ops = [];
+      if (priority !== undefined) ops.push({ op: "replace", path: "/priority", value: priority });
+      if (notes !== undefined)    ops.push({ op: "replace", path: "/notes",    value: notes });
+      if (codeId !== undefined)   ops.push({ op: "replace", path: "/code/id",  value: codeId });
+      const data = await cwRequest("PATCH", `/service/templates/${templateId}/tasks/${taskId}`, {}, ops);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "delete_service_template_task",
+    "Delete a task template (checklist item) from a service ticket template. Destructive and not reversible.",
+    {
+      templateId: z.number().describe("The parent service template ID"),
+      taskId:     z.number().describe("The task template ID to delete"),
+    },
+    async ({ templateId, taskId }) => {
+      const data = await cwRequest("DELETE", `/service/templates/${templateId}/tasks/${taskId}`);
+      return { content: [{ type: "text", text: JSON.stringify(data || { deleted: true, taskId }, null, 2) }] };
     }
   );
 
