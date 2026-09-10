@@ -6,7 +6,7 @@ import { createServer } from "http";
 import { z } from "zod";
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 // ─── ConnectWise Config ───────────────────────────────────────────────────────
 const CW_BASE_URL   = process.env.CW_BASE_URL   || "https://na.myconnectwise.net";
@@ -33,6 +33,8 @@ function getAuthHeaders() {
 }
 
 // ─── CW API Helper ────────────────────────────────────────────────────────────
+const CW_TIMEOUT_MS = Number(process.env.CW_TIMEOUT_MS) || 30_000;
+
 async function cwRequest(method, path, params = {}, data = null) {
   const url = `${CW_BASE_URL}/${API_VERSION}/apis/3.0${path}`;
   try {
@@ -42,12 +44,30 @@ async function cwRequest(method, path, params = {}, data = null) {
       headers: getAuthHeaders(),
       params: method === "GET" ? params : undefined,
       data: method !== "GET" ? data : undefined,
+      timeout: CW_TIMEOUT_MS,
     });
     return res.data;
   } catch (err) {
-    const msg = err.response?.data?.message || err.message;
-    throw new Error(`CW API Error [${err.response?.status}]: ${msg}`);
+    throw new Error(formatCwError(err));
   }
+}
+
+// CW error bodies look like { code, message, errors: [{ code, message, resource, field }] }.
+// Surface the per-field details so a failed write says *which* field CW rejected.
+function formatCwError(err) {
+  if (err.code === "ECONNABORTED") {
+    return `CW API Error [timeout]: no response within ${CW_TIMEOUT_MS}ms`;
+  }
+  const status = err.response?.status ?? "network";
+  const body   = err.response?.data;
+  let msg = (body && typeof body === "object" ? body.message : body) || err.message;
+  const details = Array.isArray(body?.errors)
+    ? body.errors
+        .map((e) => [e.field || e.resource, e.message].filter(Boolean).join(": "))
+        .filter(Boolean)
+    : [];
+  if (details.length) msg += ` — ${details.join("; ")}`;
+  return `CW API Error [${status}]: ${msg}`;
 }
 
 // ─── MCP Server Factory ───────────────────────────────────────────────────────
@@ -56,7 +76,7 @@ async function cwRequest(method, path, params = {}, data = null) {
 function createMcpServer() {
   const server = new McpServer({
     name: "connectwise-mcp",
-    version: "1.0.0",
+    version: "1.1.0",
   });
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -1101,11 +1121,25 @@ if (PORT) {
       res.end(JSON.stringify({ status: "ok", server: "connectwise-mcp" }));
       return;
     }
-    const server = createMcpServer();
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    res.on("close", () => transport.close());
-    await server.connect(transport);
-    await transport.handleRequest(req, res, await readBody(req));
+    try {
+      const server = createMcpServer();
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on("close", () => transport.close());
+      await server.connect(transport);
+      await transport.handleRequest(req, res, await readBody(req));
+    } catch (err) {
+      console.error("MCP request failed:", err);
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal server error" },
+          id: null,
+        }));
+      } else {
+        res.end();
+      }
+    }
   });
 
   httpServer.listen(PORT, () => {
@@ -1125,7 +1159,9 @@ function readBody(req) {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
-      try { resolve(JSON.parse(body)); } catch { resolve({}); }
+      if (!body) return resolve(undefined);
+      try { resolve(JSON.parse(body)); } catch { resolve(undefined); }
     });
+    req.on("error", () => resolve(undefined));
   });
 }
