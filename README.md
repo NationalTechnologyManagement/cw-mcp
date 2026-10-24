@@ -26,6 +26,47 @@ PORT=3000 npm start    # Streamable HTTP transport (Railway)
 
 HTTP mode: `GET /health` returns `{"status":"ok"}`; the MCP endpoint is `POST /`.
 
+## Secrets (Azure Key Vault)
+
+The ConnectWise API keys are not stored on Railway. On boot, `vault.js` — the
+first import in `server.js`, evaluated to completion (top-level `await`) before
+any of the server's own `process.env` reads run — fetches them from the
+**kv-ntm-apps** Key Vault and writes each one into `process.env` under the
+variable name the server already uses. The vault wins over anything the
+platform or `.env` has set.
+
+| Environment variable | Vault secret     | Shared with                     |
+| -------------------- | ---------------- | ------------------------------- |
+| `CW_CLIENT_ID`       | `cw-client-id`   | every NTM service (one key set) |
+| `CW_PUBLIC_KEY`      | `cw-public-key`  | every NTM service (one key set) |
+| `CW_PRIVATE_KEY`     | `cw-private-key` | every NTM service (one key set) |
+
+Only these four variables stay on Railway. They authenticate the service to the
+vault as a service principal that holds **Key Vault Secrets User** on the vault
+and nothing else:
+
+```env
+AZURE_KEY_VAULT_URL=https://kv-ntm-apps.vault.azure.net
+AZURE_TENANT_ID=...
+AZURE_CLIENT_ID=...
+AZURE_CLIENT_SECRET=...
+```
+
+The vault firewall denies by default and admits only this service's Railway
+**Static Outbound IPs** (Settings > Networking on the `cw-mcp-server` service).
+If the service moves region or static IPs are toggled, add the new addresses to
+the vault's network rules before the next deploy, or boot fails with a 403 from
+the vault.
+
+Leave `AZURE_KEY_VAULT_URL` unset for local development: the loader logs
+`[vault] AZURE_KEY_VAULT_URL not set` and the keys come from `.env` as before.
+A vault that is configured but unreachable, or that refuses the credential, is
+fatal on boot. A single secret missing from the vault is logged
+(`not in vault (environment fallback)`) and the environment value, if any, is
+used. The loader logs to stderr so the stdio transport's protocol stream on
+stdout is never corrupted. To rotate a key, set a new version of the secret in
+the vault and redeploy; nothing on Railway changes.
+
 ## Deploy
 
 Pushing to `main` triggers a Railway build of the `cw-mcp-server` service

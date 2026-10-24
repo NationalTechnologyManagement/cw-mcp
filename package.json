@@ -9,6 +9,8 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "@azure/identity": "^4.14.0",
+    "@azure/keyvault-secrets": "^4.11.2",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "axios": "^1.20.0",
     "dotenv": "^17.4.2",
