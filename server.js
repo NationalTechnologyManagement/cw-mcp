@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import axios from "axios";
 import { createServer } from "http";
+import { createHash, timingSafeEqual } from "crypto";
 import { z } from "zod";
 import dotenv from "dotenv";
 
@@ -1112,6 +1113,60 @@ function createMcpServer() {
 
 const PORT = process.env.PORT;
 
+// ─── Inbound auth (HTTP mode only) ───────────────────────────────────────────
+// This server can create, update and delete ConnectWise records, so every MCP
+// request must carry MCP_AUTH_TOKEN, either as
+//   Authorization: Bearer <token>        (scripts, agents, anything that sets headers)
+//   POST /t/<token>                      (Claude.ai connectors, which cannot set headers)
+// With no token configured the server fails closed: /health stays up so Railway
+// keeps the deployment, but every MCP request gets 503 until the token is set.
+const MCP_AUTH_TOKEN = (process.env.MCP_AUTH_TOKEN || "").trim();
+const MIN_TOKEN_LENGTH = 32;
+const TOKEN_CONFIGURED = MCP_AUTH_TOKEN.length >= MIN_TOKEN_LENGTH;
+const sha256 = (s) => createHash("sha256").update(s).digest();
+const EXPECTED_DIGEST = sha256(MCP_AUTH_TOKEN);
+
+function tokenMatches(candidate) {
+  // Compare fixed-length digests so neither content nor length leaks via timing.
+  return timingSafeEqual(sha256(candidate), EXPECTED_DIGEST);
+}
+
+function checkAuth(req) {
+  const path = (req.url || "/").split("?")[0];
+
+  // Claude probes for OAuth before connecting. This server has no OAuth, so say
+  // "not here" (404) rather than 401, which invites the client to try OAuth.
+  if (path.startsWith("/.well-known/") || path === "/register") {
+    return { ok: false, status: 404, error: "not found" };
+  }
+
+  if (!TOKEN_CONFIGURED) {
+    return { ok: false, status: 503, error: "server auth is not configured" };
+  }
+
+  const pathMatch = path.match(/^\/t\/([^/]+)\/?$/);
+  if (pathMatch) {
+    let candidate;
+    try { candidate = decodeURIComponent(pathMatch[1]); } catch { candidate = ""; }
+    return tokenMatches(candidate)
+      ? { ok: true }
+      : { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  const header = req.headers.authorization || "";
+  const bearer = header.match(/^Bearer\s+(.+)$/i);
+  if (bearer && tokenMatches(bearer[1].trim())) return { ok: true };
+
+  return { ok: false, status: 401, error: "unauthorized" };
+}
+
+if (PORT && !TOKEN_CONFIGURED) {
+  console.error(
+    `[auth] MCP_AUTH_TOKEN is missing or shorter than ${MIN_TOKEN_LENGTH} characters — ` +
+      "every MCP request will be refused with 503 until it is set.",
+  );
+}
+
 if (PORT) {
   // Railway / hosted mode — StreamableHTTP
   // A fresh McpServer is created for each request to avoid the
@@ -1122,6 +1177,14 @@ if (PORT) {
       res.end(JSON.stringify({ status: "ok", server: "connectwise-mcp" }));
       return;
     }
+
+    const auth = checkAuth(req);
+    if (!auth.ok) {
+      res.writeHead(auth.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: auth.error }));
+      return;
+    }
+
     try {
       const server = createMcpServer();
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

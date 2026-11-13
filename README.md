@@ -40,6 +40,26 @@ platform or `.env` has set.
 | `CW_CLIENT_ID`       | `cw-client-id`   | every NTM service (one key set) |
 | `CW_PUBLIC_KEY`      | `cw-public-key`  | every NTM service (one key set) |
 | `CW_PRIVATE_KEY`     | `cw-private-key` | every NTM service (one key set) |
+| `MCP_AUTH_TOKEN`     | `cw-mcp-server-auth-token` | this server only      |
+
+## Inbound auth
+
+This server can create, update and delete ConnectWise records, so in HTTP mode
+every MCP request must present `MCP_AUTH_TOKEN` (at least 32 characters):
+
+- **Claude.ai connectors** cannot send headers, so their connector URL carries
+  the token in the path: `https://cw-mcp-server-production.up.railway.app/t/<token>`
+- **Anything else** sends `Authorization: Bearer <token>` to `/`.
+
+`GET /health` stays public. `/.well-known/*` and `/register` return 404 so
+clients stop probing for OAuth. If the token is missing or too short the server
+still boots (so Railway keeps the deployment) but answers every MCP request
+with 503 and logs `[auth] MCP_AUTH_TOKEN is missing`. It never runs open.
+
+The path form puts the token in Railway's HTTP logs, so anyone with access to
+the Railway project can read it. To rotate it, set a new version of
+`cw-mcp-server-auth-token` in the vault, redeploy, and update every connector
+URL. Stdio mode (local, no `PORT`) needs no token.
 
 Only these four variables stay on Railway. They authenticate the service to the
 vault as a service principal that holds **Key Vault Secrets User** on the vault
@@ -76,9 +96,10 @@ Pushing to `main` triggers a Railway build of the `cw-mcp-server` service
 ## Smoke test
 
 ```bash
+export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
 CW_PUBLIC_KEY=x CW_PRIVATE_KEY=y CW_CLIENT_ID=z PORT=3123 node server.js &
 curl -s localhost:3123/health
-curl -s -X POST localhost:3123/ \
+curl -s -X POST localhost:3123/ -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```

@@ -37,6 +37,9 @@ export const SECRETS = {
   CW_CLIENT_ID: "cw-client-id",
   CW_PUBLIC_KEY: "cw-public-key",
   CW_PRIVATE_KEY: "cw-private-key",
+  // Inbound token every HTTP caller must present. Specific to this (write-capable)
+  // server — never reuse the read-only server's token.
+  MCP_AUTH_TOKEN: "cw-mcp-server-auth-token",
 };
 
 const log = (...args) => console.error(...args);
