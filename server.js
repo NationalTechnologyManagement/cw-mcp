@@ -1594,14 +1594,14 @@ function createMcpServer() {
   // ══════════════════════════════════════════════════════════════════════════════
 
   listTool("get_schedule_entries", 'List ConnectWise schedule entries, e.g. conditions "member/identifier=\'jdoe\' AND dateStart>[2026-12-01T00:00:00Z]"', () => "/schedule/entries");
-  listTool("get_schedule_types", "List ConnectWise schedule types (S = service ticket, P = project ticket, C = activity, etc.)", () => "/schedule/types");
+  listTool("get_schedule_types", "List ConnectWise schedule types (e.g. S = Service, P = Project, C = Sales activity, N = Meeting, V = Vacation)", () => "/schedule/types");
 
   server.tool(
     "create_schedule_entry",
     "Schedule a member on a ConnectWise ticket, project ticket or activity",
     {
       objectId:       z.number().describe("ID of the record being scheduled (service ticket, project ticket or activity ID)"),
-      typeIdentifier: z.string().describe('Schedule type identifier: "S" service ticket, "P" project ticket, "C" activity (use get_schedule_types)'),
+      typeIdentifier: z.string().describe('Schedule type identifier: "S" service ticket, "P" project ticket, "C" sales activity (use get_schedule_types for others)'),
       memberId:       z.number().optional().describe("Member ID to schedule"),
       memberIdentifier: z.string().optional().describe("Member identifier (login) to schedule, instead of memberId"),
       dateStart:      z.string().describe("Start (ISO 8601)"),
