@@ -1,9 +1,11 @@
 # cw-mcp
 
-ConnectWise Manage MCP server for Claude. Exposes 51 tools over the Model Context
-Protocol covering service tickets, service/task templates, board auto-templates,
-companies, contacts, time entries, projects, opportunities, procurement, agreements,
-and system lookups (members, boards, priorities, statuses).
+ConnectWise Manage MCP server for Claude. Exposes 96 tools over the Model Context
+Protocol covering service tickets and ticket tasks, service/task templates, board
+auto-templates, companies, contacts, time entries and time sheets, schedule entries,
+projects (work plan phases, project tickets, notes, tasks), project templates,
+opportunities, procurement, agreements, and system lookups (members, boards,
+board types/subtypes/items, priorities, statuses, work types, charge codes).
 
 ## Running
 

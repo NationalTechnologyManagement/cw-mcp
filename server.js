@@ -72,13 +72,87 @@ function formatCwError(err) {
   return `CW API Error [${status}]: ${msg}`;
 }
 
+// ─── Tool helpers ────────────────────────────────────────────────────────────
+const json = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }] });
+
+// Drop undefined keys so CW only sees fields the caller actually set.
+const clean = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+
+// { id } reference, or undefined when no id was given (removed by clean()).
+const ref = (id) => (id === undefined || id === null ? undefined : { id });
+
+// JSON Patch "replace" ops for every path whose value is defined.
+const patchOps = (fields) => {
+  const ops = Object.entries(fields)
+    .filter(([, v]) => v !== undefined)
+    .map(([path, value]) => ({ op: "replace", path, value }));
+  if (!ops.length) throw new Error("Nothing to update: pass at least one field to change");
+  return ops;
+};
+
+// Ticket note body. "discussion" maps to detailDescriptionFlag (CW has no discussionFlag).
+const noteBody = (text, noteType = "discussion") => ({
+  text,
+  ...(noteType === "discussion" && { detailDescriptionFlag: true }),
+  ...(noteType === "internal"   && { internalAnalysisFlag: true }),
+  ...(noteType === "resolution" && { resolutionFlag: true }),
+});
+
+const BILLING_METHODS = ["ActualRates", "FixedFee", "NotToExceed", "OverrideRate"];
+const BILL_OPTIONS    = ["Billable", "DoNotBill", "NoCharge", "NoDefault"];
+
+// Optional fields shared by create_project and create_project_from_template.
+const projectOptionalFields = {
+  statusId:     z.number().optional().describe("Project status ID (use get_project_statuses)"),
+  typeId:       z.number().optional().describe("Project type ID (use get_project_types)"),
+  managerId:    z.number().optional().describe("Project manager member ID"),
+  contactId:    z.number().optional().describe("Primary contact ID"),
+  agreementId:  z.number().optional().describe("Agreement ID"),
+  opportunityId:z.number().optional().describe("Source opportunity ID"),
+  locationId:   z.number().optional().describe("System location ID"),
+  departmentId: z.number().optional().describe("System department ID"),
+  description:  z.string().optional().describe("Project description"),
+  budgetHours:  z.number().optional().describe("Budget hours"),
+  billingAmount:z.number().optional().describe("Billing amount (fixed fee / not-to-exceed)"),
+  customerPO:   z.string().optional().describe("Customer PO"),
+  billTime:     z.enum(BILL_OPTIONS).optional().describe("Billing option for time"),
+  billExpenses: z.enum(BILL_OPTIONS).optional().describe("Billing option for expenses"),
+  billProducts: z.enum(BILL_OPTIONS).optional().describe("Billing option for products"),
+};
+
+function projectBody(a) {
+  return clean({
+    name:           a.name,
+    company:        { id: a.companyId },
+    board:          { id: a.boardId },
+    billingMethod:  a.billingMethod,
+    estimatedStart: a.estimatedStart,
+    estimatedEnd:   a.estimatedEnd,
+    status:         ref(a.statusId),
+    type:           ref(a.typeId),
+    manager:        ref(a.managerId),
+    contact:        ref(a.contactId),
+    agreement:      ref(a.agreementId),
+    opportunity:    ref(a.opportunityId),
+    location:       ref(a.locationId),
+    department:     ref(a.departmentId),
+    description:    a.description,
+    budgetHours:    a.budgetHours,
+    billingAmount:  a.billingAmount,
+    customerPO:     a.customerPO,
+    billTime:       a.billTime,
+    billExpenses:   a.billExpenses,
+    billProducts:   a.billProducts,
+  });
+}
+
 // ─── MCP Server Factory ───────────────────────────────────────────────────────
 // A new McpServer instance must be created per HTTP request — the MCP SDK does
 // not allow a single instance to connect to multiple transports.
 function createMcpServer() {
   const server = new McpServer({
     name: "connectwise-mcp",
-    version: "1.1.0",
+    version: "1.2.0",
   });
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -522,9 +596,11 @@ function createMcpServer() {
       timeEnd:      z.string().describe("End time in ISO 8601 format"),
       notes:        z.string().optional().describe("Notes about the work performed"),
       memberId:     z.number().optional().describe("Member ID (defaults to API user)"),
-      workTypeId:   z.number().optional().describe("Work type ID"),
+      workTypeId:   z.number().optional().describe("Work type ID (use get_work_types)"),
+      billableOption: z.enum(["Billable", "DoNotBill", "NoCharge", "NoDefault"]).optional().describe("Billing option for this entry (defaults to the work type's setting)"),
+      internalNotes:  z.string().optional().describe("Internal notes (not visible to the customer)"),
     },
-    async ({ chargeToId, chargeToType, timeStart, timeEnd, notes, memberId, workTypeId }) => {
+    async ({ chargeToId, chargeToType, timeStart, timeEnd, notes, memberId, workTypeId, billableOption, internalNotes }) => {
       const body = {
         chargeToId,
         chargeToType,
@@ -533,6 +609,8 @@ function createMcpServer() {
         ...(notes      && { notes }),
         ...(memberId   && { member:   { id: memberId } }),
         ...(workTypeId && { workType: { id: workTypeId } }),
+        ...(billableOption && { billableOption }),
+        ...(internalNotes  && { internalNotes }),
       };
       const data = await cwRequest("POST", "/time/entries", {}, body);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
@@ -1103,6 +1181,581 @@ function createMcpServer() {
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  PROJECTS — create/update and lookups
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "create_project",
+    "Create a ConnectWise project. Look up IDs first with get_project_boards, get_project_statuses and get_project_types. To build the work plan from a template, use create_project_from_template instead.",
+    {
+      name:           z.string().describe("Project name (max 100 chars)"),
+      companyId:      z.number().describe("Company ID"),
+      boardId:        z.number().describe("Project board ID (use get_project_boards)"),
+      billingMethod:  z.enum(BILLING_METHODS).describe("Billing method"),
+      estimatedStart: z.string().describe("Estimated start (ISO 8601, e.g. 2026-12-01T00:00:00Z)"),
+      estimatedEnd:   z.string().describe("Estimated end (ISO 8601)"),
+      ...projectOptionalFields,
+    },
+    async (args) => {
+      const data = await cwRequest("POST", "/project/projects", {}, projectBody(args));
+      return json(data);
+    }
+  );
+
+  server.tool(
+    "update_project",
+    "Update a ConnectWise project. Only the fields you pass are changed.",
+    {
+      projectId:       z.number().describe("Project ID to update"),
+      name:            z.string().optional().describe("New name"),
+      statusId:        z.number().optional().describe("New project status ID (use get_project_statuses)"),
+      typeId:          z.number().optional().describe("New project type ID (use get_project_types)"),
+      boardId:         z.number().optional().describe("New project board ID"),
+      managerId:       z.number().optional().describe("New project manager member ID"),
+      contactId:       z.number().optional().describe("New primary contact ID"),
+      estimatedStart:  z.string().optional().describe("New estimated start (ISO 8601)"),
+      estimatedEnd:    z.string().optional().describe("New estimated end (ISO 8601)"),
+      billingMethod:   z.enum(BILLING_METHODS).optional().describe("New billing method"),
+      budgetHours:     z.number().optional().describe("New budget hours"),
+      description:     z.string().optional().describe("New description"),
+      customerPO:      z.string().optional().describe("New customer PO"),
+      percentComplete: z.number().optional().describe("Override percent complete (0-100)"),
+      closedFlag:      z.boolean().optional().describe("Close (true) or reopen (false) the project"),
+    },
+    async ({ projectId, ...f }) => {
+      const ops = patchOps({
+        "/name": f.name, "/status/id": f.statusId, "/type/id": f.typeId, "/board/id": f.boardId,
+        "/manager/id": f.managerId, "/contact/id": f.contactId, "/estimatedStart": f.estimatedStart,
+        "/estimatedEnd": f.estimatedEnd, "/billingMethod": f.billingMethod, "/budgetHours": f.budgetHours,
+        "/description": f.description, "/customerPO": f.customerPO,
+        "/percentComplete": f.percentComplete, "/closedFlag": f.closedFlag,
+      });
+      return json(await cwRequest("PATCH", `/project/projects/${projectId}`, {}, ops));
+    }
+  );
+
+  listTool("get_project_statuses", "List ConnectWise project statuses (for create_project / update_project)", () => "/project/statuses");
+  listTool("get_project_types", "List ConnectWise project types", () => "/project/projectTypes");
+
+  server.tool(
+    "get_project_boards",
+    "List ConnectWise project boards (boards with the project flag set). Use the board ID for create_project, phases and project tickets.",
+    {},
+    async () => json(await cwRequest("GET", "/service/boards", { conditions: "projectFlag=true", pageSize: 100 }))
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  PROJECT WORK PLAN — phases, project tickets, notes, tasks
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "create_project_phase",
+    "Add a phase to a ConnectWise project's work plan. Pass parentPhaseId to nest it under another phase.",
+    {
+      projectId:          z.number().describe("Project ID"),
+      description:        z.string().describe("Phase name/description"),
+      parentPhaseId:      z.number().optional().describe("Parent phase ID, to create a sub-phase"),
+      statusId:           z.number().optional().describe("Phase status ID"),
+      boardId:            z.number().optional().describe("Project board ID"),
+      budgetHours:        z.number().optional().describe("Budget hours"),
+      scheduledStart:     z.string().optional().describe("Scheduled start (ISO 8601)"),
+      scheduledEnd:       z.string().optional().describe("Scheduled end (ISO 8601)"),
+      deadlineDate:       z.string().optional().describe("Deadline (ISO 8601)"),
+      notes:              z.string().optional().describe("Phase notes"),
+      wbsCode:            z.string().optional().describe("WBS code"),
+      markAsMilestoneFlag:z.boolean().optional().describe("Mark as a milestone"),
+      billSeparatelyFlag: z.boolean().optional().describe("Bill this phase separately"),
+      billingMethod:      z.enum(BILLING_METHODS).optional().describe("Billing method (only when billed separately)"),
+    },
+    async ({ projectId, parentPhaseId, statusId, boardId, ...rest }) => {
+      const body = clean({
+        ...rest,
+        parentPhase: ref(parentPhaseId),
+        status:      ref(statusId),
+        board:       ref(boardId),
+      });
+      return json(await cwRequest("POST", `/project/projects/${projectId}/phases`, {}, body));
+    }
+  );
+
+  server.tool(
+    "update_project_phase",
+    "Update a phase on a ConnectWise project. Only the fields you pass are changed.",
+    {
+      projectId:          z.number().describe("Project ID"),
+      phaseId:            z.number().describe("Phase ID to update"),
+      description:        z.string().optional().describe("New phase name/description"),
+      statusId:           z.number().optional().describe("New phase status ID"),
+      parentPhaseId:      z.number().optional().describe("Move under this parent phase"),
+      budgetHours:        z.number().optional().describe("New budget hours"),
+      scheduledStart:     z.string().optional().describe("New scheduled start (ISO 8601)"),
+      scheduledEnd:       z.string().optional().describe("New scheduled end (ISO 8601)"),
+      deadlineDate:       z.string().optional().describe("New deadline (ISO 8601)"),
+      notes:              z.string().optional().describe("New notes"),
+      wbsCode:            z.string().optional().describe("New WBS code"),
+      markAsMilestoneFlag:z.boolean().optional().describe("Milestone flag"),
+    },
+    async ({ projectId, phaseId, ...f }) => {
+      const ops = patchOps({
+        "/description": f.description, "/status/id": f.statusId, "/parentPhase/id": f.parentPhaseId,
+        "/budgetHours": f.budgetHours, "/scheduledStart": f.scheduledStart, "/scheduledEnd": f.scheduledEnd,
+        "/deadlineDate": f.deadlineDate, "/notes": f.notes, "/wbsCode": f.wbsCode,
+        "/markAsMilestoneFlag": f.markAsMilestoneFlag,
+      });
+      return json(await cwRequest("PATCH", `/project/projects/${projectId}/phases/${phaseId}`, {}, ops));
+    }
+  );
+
+  server.tool(
+    "get_project_ticket",
+    "Get a single ConnectWise project ticket by ID",
+    { ticketId: z.number().describe("The project ticket ID") },
+    async ({ ticketId }) => json(await cwRequest("GET", `/project/tickets/${ticketId}`))
+  );
+
+  server.tool(
+    "create_project_ticket",
+    "Create a ticket in a ConnectWise project phase (a work plan line item). Use get_project_phases to find the phase ID.",
+    {
+      summary:            z.string().describe("Ticket summary (max 100 chars)"),
+      phaseId:            z.number().describe("Project phase ID the ticket belongs to"),
+      projectId:          z.number().optional().describe("Project ID (CW infers it from the phase, but passing it is harmless)"),
+      boardId:            z.number().optional().describe("Project board ID"),
+      statusId:           z.number().optional().describe("Status ID (statuses of the project board, use get_statuses)"),
+      priorityId:         z.number().optional().describe("Priority ID"),
+      typeId:             z.number().optional().describe("Type ID"),
+      subTypeId:          z.number().optional().describe("Subtype ID"),
+      itemId:             z.number().optional().describe("Item ID"),
+      workTypeId:         z.number().optional().describe("Default work type ID"),
+      workRoleId:         z.number().optional().describe("Default work role ID"),
+      contactId:          z.number().optional().describe("Contact ID"),
+      ownerId:            z.number().optional().describe("Owner member ID"),
+      budgetHours:        z.number().optional().describe("Budget hours"),
+      requiredDate:       z.string().optional().describe("Due date (ISO 8601)"),
+      wbsCode:            z.string().optional().describe("WBS code"),
+      initialDescription: z.string().optional().describe("Initial description / notes"),
+      billTime:           z.enum(BILL_OPTIONS).optional().describe("Billing option for time"),
+    },
+    async ({ phaseId, projectId, boardId, statusId, priorityId, typeId, subTypeId, itemId, workTypeId, workRoleId, contactId, ownerId, ...rest }) => {
+      const body = clean({
+        ...rest,
+        phase:    { id: phaseId },
+        project:  ref(projectId),
+        board:    ref(boardId),
+        status:   ref(statusId),
+        priority: ref(priorityId),
+        type:     ref(typeId),
+        subType:  ref(subTypeId),
+        item:     ref(itemId),
+        workType: ref(workTypeId),
+        workRole: ref(workRoleId),
+        contact:  ref(contactId),
+        owner:    ref(ownerId),
+      });
+      return json(await cwRequest("POST", "/project/tickets", {}, body));
+    }
+  );
+
+  server.tool(
+    "update_project_ticket",
+    "Update a ConnectWise project ticket. Only the fields you pass are changed.",
+    {
+      ticketId:     z.number().describe("Project ticket ID to update"),
+      summary:      z.string().optional().describe("New summary"),
+      statusId:     z.number().optional().describe("New status ID"),
+      phaseId:      z.number().optional().describe("Move to this phase ID"),
+      priorityId:   z.number().optional().describe("New priority ID"),
+      ownerId:      z.number().optional().describe("New owner member ID"),
+      budgetHours:  z.number().optional().describe("New budget hours"),
+      requiredDate: z.string().optional().describe("New due date (ISO 8601)"),
+      workTypeId:   z.number().optional().describe("New work type ID"),
+      workRoleId:   z.number().optional().describe("New work role ID"),
+      wbsCode:      z.string().optional().describe("New WBS code"),
+      closedFlag:   z.boolean().optional().describe("Close (true) or reopen (false)"),
+    },
+    async ({ ticketId, ...f }) => {
+      const ops = patchOps({
+        "/summary": f.summary, "/status/id": f.statusId, "/phase/id": f.phaseId,
+        "/priority/id": f.priorityId, "/owner/id": f.ownerId, "/budgetHours": f.budgetHours,
+        "/requiredDate": f.requiredDate, "/workType/id": f.workTypeId, "/workRole/id": f.workRoleId,
+        "/wbsCode": f.wbsCode, "/closedFlag": f.closedFlag,
+      });
+      return json(await cwRequest("PATCH", `/project/tickets/${ticketId}`, {}, ops));
+    }
+  );
+
+  listTool("get_project_ticket_notes", "Get notes on a ConnectWise project ticket",
+    ({ ticketId }) => `/project/tickets/${ticketId}/notes`, { ticketId: z.number().describe("Project ticket ID") });
+
+  server.tool(
+    "add_project_ticket_note",
+    "Add a note to a ConnectWise project ticket",
+    {
+      ticketId: z.number().describe("Project ticket ID"),
+      text:     z.string().describe("Note text"),
+      noteType: z.enum(["discussion", "internal", "resolution"]).optional().describe("Tab to post to: discussion (default), internal (Internal Analysis), resolution"),
+    },
+    async ({ ticketId, text, noteType }) => json(await cwRequest("POST", `/project/tickets/${ticketId}/notes`, {}, noteBody(text, noteType)))
+  );
+
+  ticketTaskTools("project_ticket", "/project/tickets", "project ticket");
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  PROJECT TEMPLATES
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  listTool("get_project_templates", "Search and list ConnectWise project templates", () => "/project/projectTemplates/");
+
+  server.tool(
+    "get_project_template_workplan",
+    "Get the full work plan (phases and tickets) of a ConnectWise project template",
+    { templateId: z.number().describe("Project template ID") },
+    async ({ templateId }) => json(await cwRequest("GET", `/project/projectTemplates/${templateId}/workplan`))
+  );
+
+  server.tool(
+    "create_project_template",
+    "Create an empty ConnectWise project template. Then add phases with create_project_template_phase and tickets with create_project_template_ticket. To copy an existing project's work plan, use create_project_template_from_project.",
+    {
+      name:        z.string().describe("Template name"),
+      description: z.string().optional().describe("Template description"),
+      typeId:      z.number().optional().describe("Project type ID (use get_project_types)"),
+    },
+    async ({ name, description, typeId }) =>
+      json(await cwRequest("POST", "/project/projectTemplates/", {}, clean({ name, description, type: ref(typeId) })))
+  );
+
+  server.tool(
+    "create_project_template_from_project",
+    "Create a ConnectWise project template from an existing project's work plan",
+    {
+      projectId:   z.number().describe("Source project ID"),
+      name:        z.string().describe("New template name"),
+      description: z.string().optional().describe("Template description"),
+      typeId:      z.number().optional().describe("Project type ID"),
+    },
+    async ({ projectId, name, description, typeId }) =>
+      json(await cwRequest("POST", `/project/projectTemplates/createFromProject/${projectId}`, {}, clean({ name, description, type: ref(typeId) })))
+  );
+
+  listTool("get_project_template_phases", "List the phases of a ConnectWise project template",
+    ({ templateId }) => `/project/projectTemplates/${templateId}/projectTemplatePhases`,
+    { templateId: z.number().describe("Project template ID") });
+
+  server.tool(
+    "create_project_template_phase",
+    "Add a phase to a ConnectWise project template",
+    {
+      templateId:            z.number().describe("Project template ID"),
+      description:           z.string().describe("Phase name/description"),
+      parentPhaseId:         z.number().optional().describe("Parent template phase ID, to nest it"),
+      budgetHours:           z.number().optional().describe("Budget hours"),
+      notes:                 z.string().optional().describe("Phase notes"),
+      wbsCode:               z.string().optional().describe("WBS code"),
+      markAsMilestone:       z.boolean().optional().describe("Mark as a milestone"),
+      phaseBilledSeparately: z.boolean().optional().describe("Bill this phase separately"),
+    },
+    async ({ templateId, parentPhaseId, ...rest }) =>
+      json(await cwRequest("POST", `/project/projectTemplates/${templateId}/projectTemplatePhases`, {}, clean({ ...rest, parentId: parentPhaseId })))
+  );
+
+  listTool("get_project_template_tickets", "List the tickets of a ConnectWise project template",
+    ({ templateId }) => `/project/projectTemplates/${templateId}/projectTemplateTickets`,
+    { templateId: z.number().describe("Project template ID") });
+
+  server.tool(
+    "create_project_template_ticket",
+    "Add a ticket to a phase of a ConnectWise project template",
+    {
+      templateId:      z.number().describe("Project template ID"),
+      phaseId:         z.number().describe("Template phase ID (use get_project_template_phases)"),
+      description:     z.string().describe("Ticket summary/description"),
+      notes:           z.string().optional().describe("Ticket notes"),
+      budgetHours:     z.number().optional().describe("Budget hours"),
+      lineNumber:      z.number().optional().describe("Order within the phase"),
+      wbsCode:         z.string().optional().describe("WBS code"),
+      priorityId:      z.number().optional().describe("Priority ID"),
+      workTypeId:      z.number().optional().describe("Work type ID"),
+      workRoleId:      z.number().optional().describe("Work role ID"),
+      markAsMilestoneFlag: z.boolean().optional().describe("Mark as a milestone"),
+    },
+    async ({ templateId, phaseId, priorityId, workTypeId, workRoleId, ...rest }) => {
+      const body = clean({
+        ...rest,
+        projectTemplatePhaseId: phaseId,
+        priority: ref(priorityId),
+        workType: ref(workTypeId),
+        workRole: ref(workRoleId),
+      });
+      return json(await cwRequest("POST", `/project/projectTemplates/${templateId}/projectTemplateTickets`, {}, body));
+    }
+  );
+
+  server.tool(
+    "apply_project_template",
+    "Apply a project template's phases and tickets to an existing ConnectWise project",
+    {
+      projectId:  z.number().describe("Project ID"),
+      templateId: z.number().describe("Project template ID (use get_project_templates)"),
+    },
+    async ({ projectId, templateId }) =>
+      json((await cwRequest("POST", `/project/projects/${projectId}/applyTemplate/${templateId}`)) || { applied: true, projectId, templateId })
+  );
+
+  server.tool(
+    "create_project_from_template",
+    "Create a ConnectWise project and build its work plan from a project template in one step (creates the project, then applies the template). Returns the project and its phases.",
+    {
+      templateId:     z.number().describe("Project template ID (use get_project_templates)"),
+      name:           z.string().describe("Project name (max 100 chars)"),
+      companyId:      z.number().describe("Company ID"),
+      boardId:        z.number().describe("Project board ID (use get_project_boards)"),
+      billingMethod:  z.enum(BILLING_METHODS).describe("Billing method"),
+      estimatedStart: z.string().describe("Estimated start (ISO 8601)"),
+      estimatedEnd:   z.string().describe("Estimated end (ISO 8601)"),
+      ...projectOptionalFields,
+    },
+    async ({ templateId, ...args }) => {
+      const project = await cwRequest("POST", "/project/projects", {}, projectBody(args));
+      try {
+        await cwRequest("POST", `/project/projects/${project.id}/applyTemplate/${templateId}`);
+      } catch (err) {
+        throw new Error(`Project ${project.id} was created, but applying template ${templateId} failed: ${err.message}`);
+      }
+      const phases = await cwRequest("GET", `/project/projects/${project.id}/phases`, { pageSize: 100 });
+      return json({ project, phases });
+    }
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  TIME ENTRIES — update/delete and lookups
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    "update_time_entry",
+    "Update a ConnectWise time entry. Only the fields you pass are changed. Entries on a submitted/approved time sheet may be locked by CW.",
+    {
+      timeEntryId:    z.number().describe("Time entry ID"),
+      timeStart:      z.string().optional().describe("New start (ISO 8601)"),
+      timeEnd:        z.string().optional().describe("New end (ISO 8601)"),
+      notes:          z.string().optional().describe("New notes"),
+      internalNotes:  z.string().optional().describe("New internal notes"),
+      workTypeId:     z.number().optional().describe("New work type ID"),
+      billableOption: z.enum(BILL_OPTIONS).optional().describe("New billing option"),
+      hoursDeduct:    z.number().optional().describe("Hours to deduct (e.g. a break)"),
+    },
+    async ({ timeEntryId, ...f }) => {
+      const ops = patchOps({
+        "/timeStart": f.timeStart, "/timeEnd": f.timeEnd, "/notes": f.notes,
+        "/internalNotes": f.internalNotes, "/workType/id": f.workTypeId,
+        "/billableOption": f.billableOption, "/hoursDeduct": f.hoursDeduct,
+      });
+      return json(await cwRequest("PATCH", `/time/entries/${timeEntryId}`, {}, ops));
+    }
+  );
+
+  server.tool(
+    "delete_time_entry",
+    "Delete a ConnectWise time entry. Destructive and not reversible.",
+    { timeEntryId: z.number().describe("Time entry ID to delete") },
+    async ({ timeEntryId }) =>
+      json((await cwRequest("DELETE", `/time/entries/${timeEntryId}`)) || { deleted: true, timeEntryId })
+  );
+
+  listTool("get_work_types", "List ConnectWise work types (for time entries and project tickets)", () => "/time/workTypes");
+  listTool("get_charge_codes", "List ConnectWise charge codes (for time not tied to a ticket; use with chargeToType=ChargeCode)", () => "/time/chargeCodes");
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  TIME SHEETS
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  listTool("get_time_sheets", 'List ConnectWise time sheets, e.g. conditions "member/identifier=\'jdoe\' AND status=\'Open\'"', () => "/time/sheets");
+
+  server.tool(
+    "submit_time_sheet",
+    "Submit a ConnectWise time sheet for approval",
+    { timeSheetId: z.number().describe("Time sheet ID (use get_time_sheets)") },
+    async ({ timeSheetId }) =>
+      json((await cwRequest("POST", `/time/sheets/${timeSheetId}/submit`)) || { submitted: true, timeSheetId })
+  );
+
+  server.tool(
+    "reverse_time_sheet",
+    "Reverse a submitted/approved ConnectWise time sheet back to Open so its entries can be edited",
+    { timeSheetId: z.number().describe("Time sheet ID") },
+    async ({ timeSheetId }) =>
+      json((await cwRequest("POST", `/time/sheets/${timeSheetId}/reverse`)) || { reversed: true, timeSheetId })
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  SCHEDULE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  listTool("get_schedule_entries", 'List ConnectWise schedule entries, e.g. conditions "member/identifier=\'jdoe\' AND dateStart>[2026-12-01T00:00:00Z]"', () => "/schedule/entries");
+  listTool("get_schedule_types", "List ConnectWise schedule types (S = service ticket, P = project ticket, C = activity, etc.)", () => "/schedule/types");
+
+  server.tool(
+    "create_schedule_entry",
+    "Schedule a member on a ConnectWise ticket, project ticket or activity",
+    {
+      objectId:       z.number().describe("ID of the record being scheduled (service ticket, project ticket or activity ID)"),
+      typeIdentifier: z.string().describe('Schedule type identifier: "S" service ticket, "P" project ticket, "C" activity (use get_schedule_types)'),
+      memberId:       z.number().optional().describe("Member ID to schedule"),
+      memberIdentifier: z.string().optional().describe("Member identifier (login) to schedule, instead of memberId"),
+      dateStart:      z.string().describe("Start (ISO 8601)"),
+      dateEnd:        z.string().describe("End (ISO 8601)"),
+      name:           z.string().optional().describe("Entry name (defaults to the ticket summary)"),
+      statusId:       z.number().optional().describe("Schedule status ID"),
+      allowScheduleConflictsFlag: z.boolean().optional().describe("Allow overlapping with the member's other entries"),
+      notifyResource: z.boolean().optional().describe("Notify the scheduled member"),
+    },
+    async ({ typeIdentifier, memberId, memberIdentifier, statusId, ...rest }) => {
+      if (!memberId && !memberIdentifier) throw new Error("Pass memberId or memberIdentifier");
+      const body = clean({
+        ...rest,
+        type:   { identifier: typeIdentifier },
+        member: memberId ? { id: memberId } : { identifier: memberIdentifier },
+        status: ref(statusId),
+      });
+      return json(await cwRequest("POST", "/schedule/entries", {}, body));
+    }
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  SERVICE TICKETS — tasks, board type/subtype/item lookups, create from template
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  ticketTaskTools("ticket", "/service/tickets", "service ticket");
+
+  listTool("get_board_types", "List the ticket types on a service board",
+    ({ boardId }) => `/service/boards/${boardId}/types`, { boardId: z.number().describe("Service board ID") });
+  listTool("get_board_subtypes", "List the ticket subtypes on a service board",
+    ({ boardId }) => `/service/boards/${boardId}/subtypes`, { boardId: z.number().describe("Service board ID") });
+  listTool("get_board_items", "List the ticket items on a service board",
+    ({ boardId }) => `/service/boards/${boardId}/items`, { boardId: z.number().describe("Service board ID") });
+  listTool("get_board_type_subtype_items", "List the valid Type/SubType/Item combinations on a service board",
+    ({ boardId }) => `/service/boards/${boardId}/typeSubTypeItemAssociations`, { boardId: z.number().describe("Service board ID") });
+
+  server.tool(
+    "create_ticket_from_template",
+    "Create a ConnectWise service ticket from a service template: copies the template's board, status, type/subtype/item, priority, summary and description, then adds the template's tasks to the new ticket. Fields you pass override the template.",
+    {
+      templateId:         z.number().describe("Service template ID (use get_service_templates)"),
+      companyId:          z.number().describe("Company ID for the ticket"),
+      contactId:          z.number().optional().describe("Contact ID"),
+      summary:            z.string().optional().describe("Override the template summary"),
+      initialDescription: z.string().optional().describe("Override the template description"),
+      priorityId:         z.number().optional().describe("Override the template priority"),
+      statusId:           z.number().optional().describe("Override the template status"),
+    },
+    async ({ templateId, companyId, contactId, summary, initialDescription, priorityId, statusId }) => {
+      const t = await cwRequest("GET", `/service/templates/${templateId}`);
+      const tasks = await cwRequest("GET", `/service/templates/${templateId}/tasks`, { pageSize: 1000, orderBy: "priority asc" });
+      const body = clean({
+        summary:  summary ?? t.summary ?? t.name,
+        company:  { id: companyId },
+        contact:  ref(contactId),
+        board:    ref(t.board?.id),
+        status:   ref(statusId ?? t.status?.id),
+        priority: ref(priorityId ?? t.priority?.id),
+        type:     ref(t.type?.id),
+        subType:  ref(t.subtype?.id ?? t.subType?.id),
+        item:     ref(t.item?.id),
+        initialDescription: initialDescription ?? t.problem,
+      });
+      const ticket = await cwRequest("POST", "/service/tickets", {}, body);
+      const created = [];
+      const failed = [];
+      for (const task of tasks || []) {
+        try {
+          created.push(await cwRequest("POST", `/service/tickets/${ticket.id}/tasks`, {}, clean({
+            notes: task.notes, priority: task.priority, code: ref(task.code?.id),
+          })));
+        } catch (err) {
+          failed.push({ templateTaskId: task.id, error: err.message });
+        }
+      }
+      return json({ ticket, tasksCreated: created.length, tasksFailed: failed, tasks: created });
+    }
+  );
+
+  // ─── helpers scoped to this server instance ────────────────────────────────
+  // Registers a paginated GET list tool. `pathFn` gets the tool args; `extra`
+  // adds path params (e.g. boardId) to the standard conditions/paging schema.
+  function listTool(name, description, pathFn, extra = {}) {
+    server.tool(
+      name,
+      description,
+      {
+        ...extra,
+        conditions: z.string().optional().describe("CW condition string"),
+        pageSize:   z.number().optional().describe("Number of results (default 25, max 1000)"),
+        page:       z.number().optional().describe("Page number"),
+        orderBy:    z.string().optional().describe("Sort order"),
+      },
+      async (args) => json(await cwRequest("GET", pathFn(args), {
+        conditions: args.conditions,
+        pageSize:   args.pageSize || 25,
+        page:       args.page || 1,
+        orderBy:    args.orderBy,
+      }))
+    );
+  }
+
+  // get/create/update/delete tools for tasks on a service or project ticket.
+  function ticketTaskTools(prefix, base, label) {
+    const ticketId = z.number().describe(`The ${label} ID`);
+    listTool(`get_${prefix}_tasks`, `List the tasks (checklist items) on a ConnectWise ${label}`,
+      (a) => `${base}/${a.ticketId}/tasks`, { ticketId });
+
+    server.tool(
+      `create_${prefix}_task`,
+      `Add a task (checklist item) to a ConnectWise ${label}`,
+      {
+        ticketId,
+        notes:      z.string().describe("Task text"),
+        priority:   z.number().optional().describe("Order/sequence number (lower = earlier)"),
+        summary:    z.string().optional().describe("Short task summary"),
+        codeId:     z.number().optional().describe("Service code ID"),
+        memberId:   z.number().optional().describe("Assigned member ID"),
+        closedFlag: z.boolean().optional().describe("Create it already completed"),
+      },
+      async ({ ticketId: id, codeId, memberId, ...rest }) =>
+        json(await cwRequest("POST", `${base}/${id}/tasks`, {}, clean({ ...rest, code: ref(codeId), member: ref(memberId) })))
+    );
+
+    server.tool(
+      `update_${prefix}_task`,
+      `Update a task on a ConnectWise ${label} (e.g. mark it done with closedFlag=true). Only the fields you pass are changed.`,
+      {
+        ticketId,
+        taskId:     z.number().describe("Task ID"),
+        notes:      z.string().optional().describe("New task text"),
+        priority:   z.number().optional().describe("New order"),
+        summary:    z.string().optional().describe("New summary"),
+        resolution: z.string().optional().describe("Resolution text"),
+        closedFlag: z.boolean().optional().describe("Complete (true) or reopen (false)"),
+        memberId:   z.number().optional().describe("New assigned member ID"),
+      },
+      async ({ ticketId: id, taskId, ...f }) => {
+        const ops = patchOps({
+          "/notes": f.notes, "/priority": f.priority, "/summary": f.summary,
+          "/resolution": f.resolution, "/closedFlag": f.closedFlag, "/member/id": f.memberId,
+        });
+        return json(await cwRequest("PATCH", `${base}/${id}/tasks/${taskId}`, {}, ops));
+      }
+    );
+
+    server.tool(
+      `delete_${prefix}_task`,
+      `Delete a task from a ConnectWise ${label}. Destructive and not reversible.`,
+      { ticketId, taskId: z.number().describe("Task ID to delete") },
+      async ({ ticketId: id, taskId }) =>
+        json((await cwRequest("DELETE", `${base}/${id}/tasks/${taskId}`)) || { deleted: true, taskId })
+    );
+  }
 
   return server;
 }
